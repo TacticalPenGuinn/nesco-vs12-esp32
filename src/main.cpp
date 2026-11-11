@@ -12,8 +12,17 @@ const int SAFE_PIN = 17;
 // Onboard RGB LED on the ESP32-S3-N16R8 DevKitC-1.
 const int RGB_PIN = 48;
 
+// Switch must hold this long before a trip is confirmed.
+const unsigned long VAC_DEBOUNCE_MS = 250;
+
+// Keep pumping after a confirmed trip so the bag can stabilize.
+const unsigned long VAC_EXTRA_MS = 5000;
+
 // Hard stop so the pump cannot run forever if something goes wrong.
 const unsigned long PUMP_MAX_MS = 20000;
+
+unsigned long vacSince = 0;   // when the switch first read "vacuum"
+unsigned long vacTripAt = 0;  // when the trip was confirmed (0 = not yet)
 
 bool pumpOn = false;
 unsigned long pumpStart = 0;
@@ -35,6 +44,8 @@ void setPump(bool on) {
   digitalWrite(MOTOR_PIN, on ? HIGH : LOW);
   if (on) {
     pumpStart = millis();
+    vacSince = 0;
+    vacTripAt = 0;
   }
   Serial.println(on ? ">> Pump ON" : ">> Pump OFF");
 }
@@ -80,10 +91,24 @@ void loop() {
     setPump(false);
   }
 
-  // Stop at full vacuum
-  if (pumpOn && vacuumReached()) {
-    Serial.println(">> Vacuum reached");
-    setPump(false);
+  // Debounced vacuum trip, then a top-off period
+  if (pumpOn) {
+    if (vacuumReached()) {
+      if (vacSince == 0) {
+        vacSince = millis();
+      }
+      if (vacTripAt == 0 && millis() - vacSince >= VAC_DEBOUNCE_MS) {
+        vacTripAt = millis();
+        Serial.println(">> Vacuum reached, topping off");
+      }
+    } else {
+      vacSince = 0;  // flicker, reset debounce
+    }
+
+    if (vacTripAt && millis() - vacTripAt >= VAC_EXTRA_MS) {
+      Serial.println(">> Top-off done");
+      setPump(false);
+    }
   }
 
   // Safety timeout
