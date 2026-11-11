@@ -3,6 +3,9 @@
 // Motor / vacuum pump output. Active-high; driven directly from a 3.3V GPIO.
 const int MOTOR_PIN = 5;
 
+// EV release / evac solenoid. Active-high; driven directly from a 3.3V GPIO.
+const int EV_PIN = 6;
+
 // P-SW vacuum / pressure switch to ground, read with the internal pull-up.
 const int PSW_PIN = 16;
 
@@ -18,11 +21,19 @@ const unsigned long VAC_DEBOUNCE_MS = 250;
 // Keep pumping after a confirmed trip so the bag can stabilize.
 const unsigned long VAC_EXTRA_MS = 5000;
 
+// Wait after the pump stops before opening the release valve.
+const unsigned long EV_DELAY_MS = 3000;
+
+// How long the release valve stays open.
+const unsigned long EV_OPEN_MS = 2000;
+
 // Hard stop so the pump cannot run forever if something goes wrong.
 const unsigned long PUMP_MAX_MS = 20000;
 
 unsigned long vacSince = 0;   // when the switch first read "vacuum"
 unsigned long vacTripAt = 0;  // when the trip was confirmed (0 = not yet)
+unsigned long evArmAt = 0;    // when the pump stopped (0 = not armed)
+unsigned long evOpenAt = 0;   // when the valve opened (0 = closed)
 
 bool pumpOn = false;
 unsigned long pumpStart = 0;
@@ -35,17 +46,30 @@ bool vacuumReached() {
   return digitalRead(PSW_PIN) == LOW;  // flip to HIGH if backwards
 }
 
+void setValve(bool open) {
+  digitalWrite(EV_PIN, open ? HIGH : LOW);
+  Serial.println(open ? ">> Valve OPEN" : ">> Valve CLOSED");
+}
+
 void setPump(bool on) {
   if (on && !lidClosed()) {
     Serial.println(">> Lid open, pump blocked");
     on = false;
   }
+  bool wasOn = pumpOn;
   pumpOn = on;
   digitalWrite(MOTOR_PIN, on ? HIGH : LOW);
   if (on) {
     pumpStart = millis();
     vacSince = 0;
     vacTripAt = 0;
+    evArmAt = 0;
+    if (evOpenAt) {
+      evOpenAt = 0;
+      setValve(false);
+    }
+  } else if (wasOn && evArmAt == 0 && evOpenAt == 0) {
+    evArmAt = millis();
   }
   Serial.println(on ? ">> Pump ON" : ">> Pump OFF");
 }
@@ -70,6 +94,8 @@ void setup() {
   digitalWrite(MOTOR_PIN, LOW);
   pinMode(SAFE_PIN, INPUT_PULLUP);
   pinMode(PSW_PIN, INPUT_PULLUP);
+  pinMode(EV_PIN, OUTPUT);
+  digitalWrite(EV_PIN, LOW);
   neopixelWrite(RGB_PIN, 0, 0, 0);
   delay(500);
   Serial.println("Type 'm' to toggle pump");
@@ -115,6 +141,17 @@ void loop() {
   if (pumpOn && millis() - pumpStart > PUMP_MAX_MS) {
     Serial.println(">> Pump timeout");
     setPump(false);
+  }
+
+  // Release valve timing
+  if (evArmAt && millis() - evArmAt >= EV_DELAY_MS) {
+    evArmAt = 0;
+    evOpenAt = millis();
+    setValve(true);
+  }
+  if (evOpenAt && millis() - evOpenAt >= EV_OPEN_MS) {
+    evOpenAt = 0;
+    setValve(false);
   }
 
   updateLed(lid);
