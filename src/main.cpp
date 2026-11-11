@@ -39,7 +39,9 @@ bool pumpOn = false;
 unsigned long pumpStart = 0;
 
 bool lidClosed() {
-  return digitalRead(SAFE_PIN) == LOW;  // pressed / closed = LOW
+  // Polarity depends on how the lid switch is wired.
+  // Current hookup reads HIGH when the lid is closed.
+  return digitalRead(SAFE_PIN) == HIGH;
 }
 
 bool vacuumReached() {

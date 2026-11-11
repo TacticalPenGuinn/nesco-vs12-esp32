@@ -58,7 +58,7 @@ The front-panel connector is **CN9**. Its signals are:
 
 - **MOTOR** is active-high and can be driven directly from a 3.3V GPIO. No level shifter was needed for the pump output.
 - **SAFE** and **P-SW** are switches to ground. Read them with `INPUT_PULLUP`. Never feed more than 3.3V into an ESP32 GPIO; if a pull-up is added on the breadboard, tie it to the ESP's 3V3 pin, not the sealer's 5V rail.
-- `lidClosed()` polarity depends on how the lid switch is wired. This revision treats **LOW** as closed.
+- `lidClosed()` polarity depends on how the lid switch is wired. The current sketch treats **HIGH** as closed.
 - The **K1** pressure sensor is a mechanical diaphragm vacuum switch with a factory trip-point adjustment screw, not an analog pressure transducer.
 - Development is done over USB power, with only **GND** shared between the ESP32 and the sealer. The sealer's 5V is not connected to the ESP32.
 
