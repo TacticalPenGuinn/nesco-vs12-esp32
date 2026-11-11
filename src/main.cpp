@@ -3,13 +3,24 @@
 // Motor / vacuum pump output. Active-high; driven directly from a 3.3V GPIO.
 const int MOTOR_PIN = 5;
 
+// Lid (SAFE / S-SW) switch to ground, read with the internal pull-up.
+const int SAFE_PIN = 17;
+
 // Hard stop so the pump cannot run forever if something goes wrong.
 const unsigned long PUMP_MAX_MS = 20000;
 
 bool pumpOn = false;
 unsigned long pumpStart = 0;
 
+bool lidClosed() {
+  return digitalRead(SAFE_PIN) == LOW;  // pressed / closed = LOW
+}
+
 void setPump(bool on) {
+  if (on && !lidClosed()) {
+    Serial.println(">> Lid open, pump blocked");
+    on = false;
+  }
   pumpOn = on;
   digitalWrite(MOTOR_PIN, on ? HIGH : LOW);
   if (on) {
@@ -22,6 +33,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(MOTOR_PIN, OUTPUT);
   digitalWrite(MOTOR_PIN, LOW);
+  pinMode(SAFE_PIN, INPUT_PULLUP);
   delay(500);
   Serial.println("Type 'm' to toggle pump");
 }
@@ -34,6 +46,14 @@ void loop() {
     }
   }
 
+  bool lid = lidClosed();
+
+  // Stop if the lid opens while running
+  if (pumpOn && !lid) {
+    Serial.println(">> Lid opened");
+    setPump(false);
+  }
+
   // Safety timeout
   if (pumpOn && millis() - pumpStart > PUMP_MAX_MS) {
     Serial.println(">> Pump timeout");
@@ -44,6 +64,7 @@ void loop() {
   static unsigned long last = 0;
   if (millis() - last >= 500) {
     last = millis();
-    Serial.printf("PUMP=%d\n", pumpOn);
+    Serial.printf("LID=%s  PUMP=%d\n",
+                  lid ? "closed" : "open", pumpOn);
   }
 }
